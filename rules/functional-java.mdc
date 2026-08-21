@@ -1,0 +1,133 @@
+---
+description: Enforce functional-programming style in Java code using stable (non-preview) Java 8+ features
+globs: ["**/*.java"]
+alwaysApply: false
+---
+
+# Functional Java Style Guide
+
+When writing or editing Java code in this project, apply these conventions.
+Only use **stable, finalized** language/API features — never preview or
+incubator features (e.g. no pattern matching for switch if it's still
+preview in the target JDK, no incubator APIs). If a feature's finalization
+version is unclear, default to the safer/older stable alternative.
+
+## Core principles
+
+- Prefer **immutability** over mutable state.
+- Prefer **expressions** over statements where it improves clarity.
+- Prefer **pure functions** (no side effects, no shared mutable state) for
+  business logic. Side effects (I/O, logging, persistence) should be pushed
+  to the edges of the call graph.
+- Avoid reassigning local variables. Use `final` (or rely on `var` +
+  single-assignment) rather than mutating a variable across a method body.
+
+## Collections & iteration
+
+- Use the `Stream` API (`map`, `filter`, `reduce`, `collect`, `flatMap`,
+  etc.) instead of manual `for`/`while` loops when transforming or
+  aggregating collections.
+- Use `Collectors` (`toList`, `toMap`, `groupingBy`, `joining`, `partitioningBy`)
+  rather than manually building result collections inside a loop.
+- Prefer immutable collection factories: `List.of(...)`, `Set.of(...)`,
+  `Map.of(...)` / `Map.ofEntries(...)` (Java 9+), or
+  `Collections.unmodifiableList(...)` on Java 8.
+- Avoid `.forEach()` with a side-effecting lambda as a substitute for a loop
+  that mutates external state — that's imperative code wearing a functional
+  costume. Only use `forEach` for genuine terminal side effects (e.g.
+  logging), not to build up results.
+- Only fall back to a traditional loop when a stream would be
+  meaningfully less readable or when performance profiling shows it's
+  necessary — and note why in a comment when you do.
+
+## Null handling
+
+- Use `Optional<T>` for values that may be absent, instead of returning or
+  passing `null`.
+- Chain `Optional` with `map`, `flatMap`, `filter`, `orElse`,
+  `orElseGet`, `orElseThrow` rather than calling `.get()` after an
+  `isPresent()` check.
+- Never use `Optional` as a field type or a method parameter type — only as
+  a return type.
+- Do not overuse `Optional.ofNullable(...).orElse(null)` as a no-op wrapper;
+  if you're immediately unwrapping to null, don't wrap it at all.
+
+## Data modeling
+
+- Use `record` (Java 16+ stable) for immutable data carriers instead of a
+  class with private fields, a constructor, getters, and no setters.
+- If targeting Java 8–15 (no records available), use a plain immutable
+  class: `final` fields, all set via constructor, no setters, and
+  `equals`/`hashCode`/`toString` generated appropriately.
+- Avoid mutable POJOs with setters for domain/data objects. Setters imply
+  mutable state, which cuts against the functional style.
+- Use `sealed` interfaces/classes (Java 17+ stable) to model closed sets of
+  variants where applicable, paired with pattern-matching `switch`
+  expressions (Java 21+ stable) instead of long `if/else instanceof` chains.
+
+## Functions & lambdas
+
+- Prefer method references (`ClassName::methodName`,
+  `instance::methodName`) over lambdas that just forward to an existing
+  method.
+- Keep lambdas short (ideally a single expression). If a lambda body needs
+  multiple statements or intermediate variables, extract it into a named
+  private method and reference it instead.
+- Use the standard functional interfaces (`Function`, `BiFunction`,
+  `Supplier`, `Consumer`, `Predicate`, etc.) from `java.util.function`
+  rather than defining new single-method interfaces, unless a domain-
+  specific name materially improves readability.
+- Favor function composition (`andThen`, `compose`) over writing a new
+  method that just glues two existing functions together imperatively.
+
+## Control flow
+
+- Prefer `switch` **expressions** (Java 14+ stable) that yield a value over
+  `switch` **statements** with fall-through and manual variable assignment.
+- Prefer ternary/conditional expressions over `if/else` blocks whose only
+  purpose is to assign a single variable.
+- Avoid `break`/`continue`/early `return` inside loops as flow-control
+  crutches — restructure as a stream pipeline with `filter`/`takeWhile`/
+  `dropWhile` instead.
+
+## Text & misc
+
+- Use text blocks (`"""..."""`, Java 15+ stable) for multi-line string
+  literals instead of concatenation with `+` and `\n`.
+- Use `var` (Java 10+) for local variable type inference when the type is
+  obvious from the right-hand side and it improves readability — but not
+  at the expense of clarity for reviewers.
+
+## What NOT to do
+
+- Do not use any preview or incubator feature (check the project's target
+  JDK version; when unsure, prefer the older stable equivalent).
+- Do not introduce a functional-programming library (e.g. Vavr) unless it's
+  already a project dependency — stick to `java.util.function` and the
+  Streams API from the standard library.
+- Do not sacrifice readability for cleverness — a stream pipeline that's
+  harder to understand than the equivalent loop is a regression, not an
+  improvement. Functional style is a means to correctness and clarity, not
+  an end in itself.
+
+## Example
+
+**Avoid:**
+```java
+List<String> results = new ArrayList<>();
+for (Order order : orders) {
+    if (order.getStatus() == Status.COMPLETED) {
+        results.add(order.getCustomerName().toUpperCase());
+    }
+}
+return results;
+```
+
+**Prefer:**
+```java
+return orders.stream()
+        .filter(order -> order.getStatus() == Status.COMPLETED)
+        .map(Order::getCustomerName)
+        .map(String::toUpperCase)
+        .toList(); // Java 16+; use .collect(Collectors.toList()) on Java 8-15
+```
