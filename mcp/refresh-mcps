@@ -1,0 +1,107 @@
+#!/bin/bash
+set -e
+
+# Resolve symlinks to find the actual script location
+SCRIPT="$0"
+while [ -h "$SCRIPT" ]; do
+  SCRIPT=$(readlink "$SCRIPT")
+done
+MCP_DIR="$(cd "$(dirname "$SCRIPT")" && pwd)"
+TEMPLATE="$MCP_DIR/servers.template.json"
+ENV_FILE="$HOME/.env.local"
+
+# Color output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Validate files exist
+if [ ! -f "$TEMPLATE" ]; then
+  echo -e "${RED}Error: Template file not found at $TEMPLATE${NC}"
+  exit 1
+fi
+if [ ! -f "$ENV_FILE" ]; then
+  echo -e "${RED}Error: .env.local file not found at $ENV_FILE${NC}"
+  exit 1
+fi
+
+# Read template
+TEMPLATE_CONTENT=$(cat "$TEMPLATE")
+
+# Source env vars and substitute them one by one
+RESOLVED="$TEMPLATE_CONTENT"
+while IFS='=' read -r line; do
+  # Skip comments and empty lines
+  [[ "$line" =~ ^[[:space:]] *# ]] && continue
+  [[ -z "$line" ]] && continue
+
+  # Extract key and value (handle 'export KEY=VALUE' format)
+  if [[ "$line" =~ ^export[[:space:]]+ ([^=]+)=(.*)$ ]]; then
+    KEY="${BASH_REMATCH[1]}"
+    VALUE="${BASH_REMATCH[2]}"
+  elif [[ "$line" =~ ^([^=]+)=(.*)$ ]]; then
+    KEY="${BASH_REMATCH[1]}"
+    VALUE="${BASH_REMATCH[2]}"
+  else
+    continue
+  fi
+
+# Escape special chars in value for sed replacement
+value_escaped=$(printf '%s\n' "$VALUE" | sed -e 's/[\/&]/\\&/g')
+
+  # Replace placeholders in the template
+  RESOLVED=$(echo "$RESOLVED" | sed "s|\${$KEY}|$value_escaped|g")
+done < "$ENV_FILE"
+
+# Extract just the mcpServers object for later use
+MCP_SERVERS=$(echo "$RESOLVED" | jq '.mcpServers')
+
+# Write JSON to dest, creating parent dirs (including dangling-symlink targets)
+write_mcp_json() {
+  local dest="$1"
+  mkdir -p "$(dirname "$dest")"
+  if [[ -L "$dest" ]]; then
+    # If it's a symlink, write to the target
+    local target
+    target=$(readlink "$dest")
+    [[ "$target" != /* ]] && target="$(dirname "$dest")/$target"
+    mkdir -p "$(dirname "$target")"
+  fi
+  echo "{\"mcpServers\": $MCP_SERVERS}" | jq '.' > "$dest"
+}
+
+# Shared resolved files (Cursor/Devin configs tipically symlink here)
+SHARED_CONIG="$HOME/.mcp/servers.json"
+write_mcp_json "$SHARED_CONIG"
+echo -e "${GREEN}Successfully wrote resolved MCP servers to $SHARED_CONIG${NC}"
+
+# Deploy to Cursor
+CURSOR_CONFIG="$HOME/.cursor/mcp.json"
+write_mcp_json "$CURSOR_CONFIG"
+echo -e "${GREEN}Successfully wrote resolved MCP servers to $CURSOR_CONFIG${NC}"
+
+# Deploy to Devin
+DEVIN_CONFIG="$HOME/.config/devin/mcp_config.json"
+write_mcp_json "$DEVIN_CONFIG"
+echo -e "${GREEN}Successfully wrote resolved MCP servers to $DEVIN_CONFIG${NC}"
+
+# Deploy to Claude Code (merge into ~.claude.json)
+CLAUDE_CONFIG="$HOME/.claude.json"
+
+# Read existing Claude config
+if [ -f "$CLAUDE_CONFIG" ]; then
+  # Merge mcpServers into existing config
+  jq --argjson mcpServers "$MCP_SERVERS" '.mcpServers = $mcpServers' "$CLAUDE_CONFIG" > "${CLAUDE_CONFIG}.tmp"
+  mv "${CLAUDE_CONFIG}.tmp" "$CLAUDE_CONFIG"
+else
+  # Create new config with mcpServers (shouldn't happen, but be safe)
+  jq --argjson mcpServers "$MCP_SERVERS" '{mcpServers: $mcpServers}' > "$CLAUDE_CONFIG"
+fi
+echo -e "${GREEN}Successfully wrote resolved MCP servers to $CLAUDE_CONFIG${NC}"
+
+echo
+echo -e "${YELLOW}All MCP server configurations have been refreshed successfully.${NC}"
+echo "Template file: $TEMPLATE"
+echo "Environment file: $ENV_FILE"
+echo "Cursor, Devin, and Claude configurations have been updated."

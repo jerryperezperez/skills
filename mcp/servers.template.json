@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "github": {
+      "http": "http",
+      "url": "https://raw.githubusercontent.com/MinecraftForge/MCPConfig/master/servers.json",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_TOKEN}"
+      },
+      "disable": false  
+    },
+    "gitlab": {
+      "http": "http",
+      "url": "https://gitlab.com/api/v4/projects/27896490/repository/files/servers.json/raw?ref=master",
+      "headers": {
+        "Authorization": "Bearer ${GITLAB_TOKEN}"
+      },
+      "disable": false
+    },
+    "datadog": {
+      "type": "http",
+      "url": "https://mcp.datadoghq.com/v2/mcp",
+      "disable": false
+    }
+
+  }
+}
