@@ -1,0 +1,45 @@
+#!/bin/bash
+# Validates that skills symlinks point to the correct location
+
+SKILLS_SOURCE="$HOME/Document/skills/skills"
+TOOLS=(
+  "$HOME/.claude/skills"
+  "$HOME/.cursor/skills"
+  "$HOME/.config/devin/skills"
+  "$HOME/.codex/skills"
+)
+
+echo "Validating skills symlinks..."
+echo "Expected source: $SKILLS_SOURCE"
+echo ""
+
+all_valid=true
+
+for tool_path in "${TOOLS[@]}"; do
+  if [[ -L "$tool_path" ]]; then
+    target=$(readlink "$tool_path")
+    if [[ "$target" == "$SKILLS_SOURCE" ]]; then
+      echo -e "${GREEN}Valid symlink: $tool_path -> $target${NC}"
+    else
+      echo -e "${RED}Invalid symlink: $tool_path -> $target (expected: $SKILLS_SOURCE)${NC}"
+      all_valid=false
+    fi
+  else
+    echo -e "${YELLOW}Not a symlink: $tool_path${NC}"
+    all_valid=false
+  fi
+done
+
+echo ""
+if [[ "$all_valid" == true ]]; then
+  echo -e "${GREEN}All skills symlinks are valid.${NC}"
+  exit 0
+else
+  echo -e "${RED}Some skills symlinks are invalid. Please fix them.${NC}"
+  echo ""
+  echo " ln -s $SKILLS_SOURCE ~/.claude/skills"
+  echo " ln -s $SKILLS_SOURCE ~/.cursor/skills"
+  echo " ln -s $SKILLS_SOURCE ~/.config/devin/skills"
+  echo " ln -s $SKILLS_SOURCE ~/.codex/skills"
+  exit 1
+fi
